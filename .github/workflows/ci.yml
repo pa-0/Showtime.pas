@@ -1,0 +1,57 @@
+name: CI
+
+on:
+    workflow_dispatch:
+    #  push:
+#    branches: [main]
+#  pull_request:
+#    branches: [main]
+
+# Requires a self-hosted Windows runner with RAD Studio/Delphi and MSBuild installed
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, windows]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Optional: add MSBuild to PATH if not already available on the runner
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        if: ${{ always() }}
+
+      - name: Build main (Win32 Release)
+        run: msbuild .\CIDemo.dproj /t:Build /p:Config=Release /p:Platform=Win32
+
+      - name: Build tests (Win32 Release)
+        run: msbuild .\CIDemoTests.dproj /t:Build /p:Config=Release /p:Platform=Win32
+
+      - name: Run DUnitX tests
+        run: .\Win32\Release\CIDemoTests.exe
+
+      - name: Upload test results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dunitx-results
+          path: |
+            Win32/Release/dunitx-results.xml
+            Win32/Release/CIDemoTests.exe
+
+      - name: Publish test results (NUnit)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: DUnitX (NUnit)
+          path: Win32/Release/dunitx-results.xml
+          reporter: nunit
+          fail-on: errors
